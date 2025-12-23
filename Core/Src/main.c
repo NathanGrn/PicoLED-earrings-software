@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "math.h"
+#include "picoled.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -101,29 +101,6 @@ void set_grb(uint8_t *grb_value){
 	pwm_finished = 0;
 }
 
-typedef struct rgb_color {
-	uint8_t green;
-	uint8_t red;
-	uint8_t blue;
-};
-
-typedef struct hsv_color {
-	float hue;
-	float sat;
-	float val;
-}hsv_color;
-
-void hsv2grb(hsv_color *hsv, uint8_t grb[3]){
-
-	float k_r = fmodf((5.0 + hsv->hue/60.0), 6.0);
-	float k_g = fmodf((3.0 + hsv->hue/60.0), 6.0);
-	float k_b = fmodf((1.0 + hsv->hue/60.0), 6.0);
-
-	grb[0] = (hsv->value - hsv->value*hsv->saturation*fmaxf(0.0, fminf(fminf(k_g, 4-k_g),1.0)))*255.0;
-	grb[1] = (hsv->value - hsv->value*hsv->saturation*fmaxf(0.0, fminf(fminf(k_r, 4-k_r),1.0)))*255.0;
-	grb[2] = (hsv->value - hsv->value*hsv->saturation*fmaxf(0.0, fminf(fminf(k_b, 4-k_b),1.0)))*255.0;
-}
-
 /* USER CODE END 0 */
 
 /**
@@ -165,13 +142,14 @@ int main(void)
   // Enable 5V boost
   HAL_GPIO_WritePin(EN_5V_GPIO_Port, EN_5V_Pin, GPIO_PIN_SET);
 
-  // Buffer for GRB values
-	static hsv_color hsv = {0};
-	static uint8_t grb[3] = {0};
+  pled_ctx_t pled_ctx;
+  pled_color_t led_array[5];
+  pled_init(&pled_ctx, led_array, 5);
 
-	hsv.hue = 0.0;
-	hsv.saturation = 1.0;
-	hsv.value = 0.1;
+  pled_hsv_t hsv = {.hue = 0, .sat=1.0, .val=0.1};
+  pled_color_t rgb = {0};
+  pled_color_t black = {0};
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -185,20 +163,13 @@ int main(void)
 	//adc_value = HAL_ADC_GetValue(&hadc1);
 	//(void) adc_value;
 
-//	for(int i=0; i<val_max; i++){
-//
-//		led_grb_val[0] = i;
-//		led_grb_val[1] = i;
-//		led_grb_val[2] = i;
-//		set_grb(led_grb_val);
-//		HAL_Delay(50);
-//	}
-
 	for(int i = 0; i<360; i++){
 
 		hsv.hue = (float)i;
-		hsv2grb(&hsv, grb);
-		set_grb(grb);
+		hsv2pled(&hsv, &rgb);
+		pled_set_all(&pled_ctx, &rgb);
+		pled_set(&pled_ctx, &black, 0);
+		set_grb((uint8_t*)&rgb);
 		HAL_Delay(10);
 	}
 
