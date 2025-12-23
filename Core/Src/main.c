@@ -46,7 +46,7 @@ TIM_HandleTypeDef htim1;
 DMA_HandleTypeDef hdma_tim1_ch2;
 
 /* USER CODE BEGIN PV */
-
+pled_ctx_t pled_ctx;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,44 +62,34 @@ static void MX_TIM1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-volatile uint8_t pwm_finished = 0;
-
-void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim){
-
-	HAL_TIM_PWM_Stop_DMA(&htim1, TIM_CHANNEL_2);
-	pwm_finished = 1;
-}
-
-void set_grb(uint8_t *grb_value){
-
-	// Compute timer values for GRB signal
-	static uint16_t buffer[300] = {0};
-
-	for(int i = 0; i<3; i++){
-		for(int j = 0; j<8; j++){
-			uint8_t mask = 1<<(7-j);
-			if(grb_value[i]&mask){
-				buffer[i*8+j+100] = 30;
-				buffer[i*8+j+124] = 30;
-				buffer[i*8+j+148] = 30;
-				buffer[i*8+j+172] = 30;
-				buffer[i*8+j+196] = 30;
-			}
-			else{
-				buffer[i*8+j+100] = 12;
-				buffer[i*8+j+124] = 12;
-				buffer[i*8+j+148] = 12;
-				buffer[i*8+j+172] = 12;
-				buffer[i*8+j+196] = 12;
-			}
-		}
-	}
-
-	// Output GRB values
-	HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, (uint32_t*) buffer, 300);
-	while (!pwm_finished){};
-	pwm_finished = 0;
-}
+//void set_grb(uint8_t *grb_value){
+//
+//	// Compute timer values for GRB signal
+//	static uint16_t buffer[300] = {0};
+//
+//	for(int i = 0; i<3; i++){
+//		for(int j = 0; j<8; j++){
+//			uint8_t mask = 1<<(7-j);
+//			if(grb_value[i]&mask){
+//				buffer[i*8+j+100] = 30;
+//				buffer[i*8+j+124] = 30;
+//				buffer[i*8+j+148] = 30;
+//				buffer[i*8+j+172] = 30;
+//				buffer[i*8+j+196] = 30;
+//			}
+//			else{
+//				buffer[i*8+j+100] = 12;
+//				buffer[i*8+j+124] = 12;
+//				buffer[i*8+j+148] = 12;
+//				buffer[i*8+j+172] = 12;
+//				buffer[i*8+j+196] = 12;
+//			}
+//		}
+//	}
+//
+//	// Output GRB values
+//	HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, (uint32_t*) buffer, 300);
+//}
 
 /* USER CODE END 0 */
 
@@ -137,14 +127,12 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_Delay(500);
+  pled_color_t led_array[1];
+  pled_init(&pled_ctx, led_array, 1);
 
   // Enable 5V boost
+  HAL_Delay(10);
   HAL_GPIO_WritePin(EN_5V_GPIO_Port, EN_5V_Pin, GPIO_PIN_SET);
-
-  pled_ctx_t pled_ctx;
-  pled_color_t led_array[5];
-  pled_init(&pled_ctx, led_array, 5);
 
   pled_hsv_t hsv = {.hue = 0, .sat=1.0, .val=0.1};
   pled_color_t rgb = {0};
@@ -168,8 +156,9 @@ int main(void)
 		hsv.hue = (float)i;
 		hsv2pled(&hsv, &rgb);
 		pled_set_all(&pled_ctx, &rgb);
-		pled_set(&pled_ctx, &black, 0);
-		set_grb((uint8_t*)&rgb);
+		//pled_set(&pled_ctx, &black, 0);
+		pled_display(&pled_ctx);
+		//set_grb((uint8_t*)&rgb);
 		HAL_Delay(10);
 	}
 

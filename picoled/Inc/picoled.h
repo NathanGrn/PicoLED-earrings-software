@@ -9,6 +9,7 @@
 #define INC_PICOLED_H_
 
 #include "stdint.h"
+#include "stdbool.h"
 
 typedef struct __attribute__((packed)) {
 	uint8_t green;
@@ -19,6 +20,12 @@ typedef struct __attribute__((packed)) {
 typedef struct {
 	uint16_t n_leds;
 	pled_color_t* led_array;
+
+	// inner working
+	uint16_t _timer_buffer[300];
+	volatile bool _is_busy;
+	volatile uint16_t _led_index;
+
 }pled_ctx_t;
 
 typedef enum {
