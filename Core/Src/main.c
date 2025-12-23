@@ -127,16 +127,17 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
-  pled_color_t led_array[1];
-  pled_init(&pled_ctx, led_array, 1);
+  pled_color_t led_array[5];
+  pled_init(&pled_ctx, led_array, 5);
 
   // Enable 5V boost
   HAL_Delay(10);
   HAL_GPIO_WritePin(EN_5V_GPIO_Port, EN_5V_Pin, GPIO_PIN_SET);
 
-  pled_hsv_t hsv = {.hue = 0, .sat=1.0, .val=0.1};
+  pled_hsv_t hsv = {.hue = 0, .sat=1.0, .val=0.05};
   pled_color_t rgb = {0};
   pled_color_t black = {0};
+  pled_set_all(&pled_ctx, &rgb);
 
   /* USER CODE END 2 */
 
@@ -155,10 +156,21 @@ int main(void)
 
 		hsv.hue = (float)i;
 		hsv2pled(&hsv, &rgb);
-		pled_set_all(&pled_ctx, &rgb);
-		//pled_set(&pled_ctx, &black, 0);
+		pled_set(&pled_ctx, &rgb, 1);
+
+		hsv.hue = (float)((i+90)%360);
+		hsv2pled(&hsv, &rgb);
+		pled_set(&pled_ctx, &rgb, 2);
+
+		hsv.hue = (float)((i+180)%360);
+		hsv2pled(&hsv, &rgb);
+		pled_set(&pled_ctx, &rgb, 3);
+
+		hsv.hue = (float)((i+270)%360);
+		hsv2pled(&hsv, &rgb);
+		pled_set(&pled_ctx, &rgb, 4);
+
 		pled_display(&pled_ctx);
-		//set_grb((uint8_t*)&rgb);
 		HAL_Delay(10);
 	}
 

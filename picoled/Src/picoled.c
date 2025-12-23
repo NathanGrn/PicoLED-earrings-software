@@ -10,10 +10,7 @@
 #include "math.h"
 #include "string.h"
 
-
-
 // Init function
-
 extern TIM_HandleTypeDef htim1; //fixme
 
 pled_status_t pled_init(pled_ctx_t* ctx, pled_color_t* led_array, uint16_t n_leds) {
@@ -25,7 +22,7 @@ pled_status_t pled_init(pled_ctx_t* ctx, pled_color_t* led_array, uint16_t n_led
 	ctx->_led_index = 0;
 	memset(ctx->_timer_buffer, 0, sizeof(ctx->_timer_buffer));
 
-	HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, (uint32_t*)ctx->_timer_buffer, 300); //fixme
+	HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, (uint32_t*)ctx->_timer_buffer, 48); //fixme
 
 	return PLED_OK;
 }
@@ -47,7 +44,7 @@ pled_status_t pled_set_all(pled_ctx_t* ctx, pled_color_t* color){
 		memcpy(ctx->led_array+i, color, sizeof(pled_color_t));
 	}
 
-	return PLED_ERROR;
+	return PLED_OK;
 }
 
 // Display functions
@@ -57,36 +54,56 @@ pled_status_t pled_display(pled_ctx_t* ctx){
 		return PLED_BUSY;
 	}
 
-	uint16_t* buff_addr = ctx->_timer_buffer+100;
-
-	for(ctx->_led_index = 0; ctx->_led_index<ctx->n_leds; ctx->_led_index++){
-		for(int i = 0; i<3; i++){
-			for(int j = 0; j<8; j++){
-				uint8_t mask = 1<<(7-j);
-				if(((uint8_t*)&(ctx->led_array[ctx->_led_index]))[i]&mask){
-					buff_addr[i*8+j] = 30;
-				}
-				else{
-					buff_addr[i*8+j] = 12;
-				}
-			}
-		}
-	}
-
 	ctx->_led_index = 0;
 	ctx->_is_busy = true;
-
-	HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, (uint32_t*)  ctx->_timer_buffer, 300);
 
 	return PLED_OK;
 }
 
+void _pled_irq_handler(pled_ctx_t* ctx, bool isHalfCplt){
+
+	if(ctx->_is_busy){
+		uint16_t* buff_addr = ctx->_timer_buffer;
+		if(!isHalfCplt){ // DMA just finished streaming the 24 higher words
+			buff_addr += 24;
+		}
+
+		if(ctx->_led_index < ctx->n_leds){
+			for(int i = 0; i<3; i++){
+				for(int j = 0; j<8; j++){
+					uint8_t mask = 1<<(7-j);
+					if(((uint8_t*)&(ctx->led_array[ctx->_led_index]))[i]&mask){
+						buff_addr[i*8+j] = 30;
+					}
+					else{
+						buff_addr[i*8+j] = 12;
+					}
+				}
+			}
+		}
+		else{
+			memset(buff_addr, 0, 24*sizeof(uint16_t));
+		}
+
+		ctx->_led_index++;
+
+		if(ctx->_led_index >= ctx->n_leds+2){
+
+			ctx->_is_busy = false; //when timer is flushed, release the lib
+		}
+	}
+}
+
 extern pled_ctx_t pled_ctx; //fixme
+
+void HAL_TIM_PWM_PulseFinishedHalfCpltCallback(TIM_HandleTypeDef *htim){
+
+	_pled_irq_handler(&pled_ctx, true);
+}
 
 void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim){
 
-	HAL_TIM_PWM_Stop_DMA(&htim1, TIM_CHANNEL_2);
-	pled_ctx._is_busy = false;
+	_pled_irq_handler(&pled_ctx, false);
 }
 
 // Some utilities
