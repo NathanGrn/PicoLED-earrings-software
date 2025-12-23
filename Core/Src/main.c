@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "picoled.h"
+#include "stdlib.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,35 +63,6 @@ static void MX_TIM1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-//void set_grb(uint8_t *grb_value){
-//
-//	// Compute timer values for GRB signal
-//	static uint16_t buffer[300] = {0};
-//
-//	for(int i = 0; i<3; i++){
-//		for(int j = 0; j<8; j++){
-//			uint8_t mask = 1<<(7-j);
-//			if(grb_value[i]&mask){
-//				buffer[i*8+j+100] = 30;
-//				buffer[i*8+j+124] = 30;
-//				buffer[i*8+j+148] = 30;
-//				buffer[i*8+j+172] = 30;
-//				buffer[i*8+j+196] = 30;
-//			}
-//			else{
-//				buffer[i*8+j+100] = 12;
-//				buffer[i*8+j+124] = 12;
-//				buffer[i*8+j+148] = 12;
-//				buffer[i*8+j+172] = 12;
-//				buffer[i*8+j+196] = 12;
-//			}
-//		}
-//	}
-//
-//	// Output GRB values
-//	HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_2, (uint32_t*) buffer, 300);
-//}
-
 /* USER CODE END 0 */
 
 /**
@@ -127,17 +99,20 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
+  // Init LED output then enable 5V supply
   pled_color_t led_array[5];
   pled_init(&pled_ctx, led_array, 5);
-
-  // Enable 5V boost
   HAL_Delay(10);
   HAL_GPIO_WritePin(EN_5V_GPIO_Port, EN_5V_Pin, GPIO_PIN_SET);
 
+  // Some stuff
   pled_hsv_t hsv = {.hue = 0, .sat=1.0, .val=0.05};
   pled_color_t rgb = {0};
   pled_color_t black = {0};
-  pled_set_all(&pled_ctx, &rgb);
+
+  // Clear the LEDs just in case
+  pled_set_all(&pled_ctx, &black);
+  pled_display(&pled_ctx);
 
   /* USER CODE END 2 */
 
@@ -152,8 +127,23 @@ int main(void)
 	//adc_value = HAL_ADC_GetValue(&hadc1);
 	//(void) adc_value;
 
-	for(int i = 0; i<360; i++){
+	for(int i = 0; i<360; i+=10){
 
+		if(HAL_GPIO_ReadPin(BTN_GPIO_Port, BTN_Pin)){
+			hsv.hue = 35.0+((float)(rand()%100))/10.0;
+			hsv.val = 0.01+((float)(rand()%100))/1000.0;
+			hsv2pled(&hsv, &rgb);
+		}
+		else{
+			hsv.hue = 35.0+((float)(rand()%100))/10.0;
+			hsv.sat = 0.0;
+			hsv.val = 0.01+((float)(rand()%100))/1000.0;
+			hsv2pled(&hsv, &rgb);
+		}
+		pled_set(&pled_ctx, &rgb, 0);
+
+		hsv.val = 0.05;
+		hsv.sat = 1;
 		hsv.hue = (float)i;
 		hsv2pled(&hsv, &rgb);
 		pled_set(&pled_ctx, &rgb, 1);
@@ -171,7 +161,7 @@ int main(void)
 		pled_set(&pled_ctx, &rgb, 4);
 
 		pled_display(&pled_ctx);
-		HAL_Delay(10);
+		HAL_Delay(100);
 	}
 
     /* USER CODE END WHILE */
