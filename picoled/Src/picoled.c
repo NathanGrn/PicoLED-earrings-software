@@ -60,6 +60,11 @@ pled_status_t pled_display(pled_ctx_t* ctx){
 	return PLED_OK;
 }
 
+bool pled_is_busy(pled_ctx_t* ctx){
+
+	return ctx->_is_busy;
+}
+
 void _pled_irq_handler(pled_ctx_t* ctx, bool isHalfCplt){
 
 	if(ctx->_is_busy){

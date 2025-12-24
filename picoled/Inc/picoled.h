@@ -44,6 +44,7 @@ pled_status_t pled_set_all(pled_ctx_t* ctx, pled_color_t* color);
 
 // Display function
 pled_status_t pled_display(pled_ctx_t* ctx);
+bool pled_is_busy(pled_ctx_t* ctx);
 
 // Some utilities
 typedef struct {

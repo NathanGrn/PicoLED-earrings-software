@@ -114,6 +114,8 @@ int main(void)
   pled_set_all(&pled_ctx, &black);
   pled_display(&pled_ctx);
 
+  uint32_t count = 0;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -127,42 +129,28 @@ int main(void)
 	//adc_value = HAL_ADC_GetValue(&hadc1);
 	//(void) adc_value;
 
-	for(int i = 0; i<360; i+=10){
+	uint32_t i = count%360;
 
-		if(HAL_GPIO_ReadPin(BTN_GPIO_Port, BTN_Pin)){
-			hsv.hue = 35.0+((float)(rand()%100))/10.0;
-			hsv.val = 0.01+((float)(rand()%100))/1000.0;
-			hsv2pled(&hsv, &rgb);
-		}
-		else{
-			hsv.hue = 35.0+((float)(rand()%100))/10.0;
-			hsv.sat = 0.0;
-			hsv.val = 0.01+((float)(rand()%100))/1000.0;
-			hsv2pled(&hsv, &rgb);
-		}
-		pled_set(&pled_ctx, &rgb, 0);
+	hsv.hue = (float)i;
+	hsv2pled(&hsv, &rgb);
+	pled_set(&pled_ctx, &rgb, 1);
 
-		hsv.val = 0.05;
-		hsv.sat = 1;
-		hsv.hue = (float)i;
-		hsv2pled(&hsv, &rgb);
-		pled_set(&pled_ctx, &rgb, 1);
+	hsv.hue = (float)((i+90)%360);
+	hsv2pled(&hsv, &rgb);
+	pled_set(&pled_ctx, &rgb, 2);
 
-		hsv.hue = (float)((i+90)%360);
-		hsv2pled(&hsv, &rgb);
-		pled_set(&pled_ctx, &rgb, 2);
+	hsv.hue = (float)((i+180)%360);
+	hsv2pled(&hsv, &rgb);
+	pled_set(&pled_ctx, &rgb, 3);
 
-		hsv.hue = (float)((i+180)%360);
-		hsv2pled(&hsv, &rgb);
-		pled_set(&pled_ctx, &rgb, 3);
+	hsv.hue = (float)((i+270)%360);
+	hsv2pled(&hsv, &rgb);
+	pled_set(&pled_ctx, &rgb, 4);
 
-		hsv.hue = (float)((i+270)%360);
-		hsv2pled(&hsv, &rgb);
-		pled_set(&pled_ctx, &rgb, 4);
+	pled_display(&pled_ctx);
+	while(pled_is_busy(&pled_ctx));
 
-		pled_display(&pled_ctx);
-		HAL_Delay(100);
-	}
+	count++;
 
     /* USER CODE END WHILE */
 
