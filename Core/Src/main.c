@@ -99,13 +99,16 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
+  //Calibrate the ADC
+  HAL_ADCEx_Calibration_Start(&hadc1);
+
   // Init LED output then enable 5V supply
   pled_color_t led_array[5];
   pled_init(&pled_ctx, led_array, 5);
   HAL_Delay(10);
   HAL_GPIO_WritePin(EN_5V_GPIO_Port, EN_5V_Pin, GPIO_PIN_SET);
 
-  // Some stuff
+  // Prepare some buffers
   pled_hsv_t hsv = {.hue = 0, .sat=1.0, .val=0.05};
   pled_color_t rgb = {0};
   pled_color_t black = {0};
@@ -115,7 +118,6 @@ int main(void)
   pled_display(&pled_ctx);
 
   uint32_t count = 0;
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -123,14 +125,14 @@ int main(void)
   while (1)
   {
 	// Take an ADC reading
-	//static uint32_t adc_value = 0;
-	//HAL_ADC_Start(&hadc1);
-	//HAL_ADC_PollForConversion(&hadc1, 10000);
-	//adc_value = HAL_ADC_GetValue(&hadc1);
-	//(void) adc_value;
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, 10000);
+	uint32_t adc_value = HAL_ADC_GetValue(&hadc1);
+	HAL_ADC_Stop(&hadc1);
+	float V_mic = 1.8*((float)adc_value/4096.0);
 
 	uint32_t i = count%360;
-
+/*
 	hsv.hue = (float)i;
 	hsv2pled(&hsv, &rgb);
 	pled_set(&pled_ctx, &rgb, 1);
@@ -148,7 +150,7 @@ int main(void)
 	pled_set(&pled_ctx, &rgb, 4);
 
 	pled_display(&pled_ctx);
-	while(pled_is_busy(&pled_ctx));
+	while(pled_is_busy(&pled_ctx));*/
 
 	count++;
 
@@ -183,7 +185,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV1;
   RCC_OscInitStruct.PLL.PLLN = 8;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV32;
   RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV4;
   RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -240,9 +242,12 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.DMAContinuousRequests = DISABLE;
   hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
-  hadc1.Init.SamplingTimeCommon1 = ADC_SAMPLETIME_1CYCLE_5;
+  hadc1.Init.SamplingTimeCommon1 = ADC_SAMPLETIME_79CYCLES_5;
   hadc1.Init.SamplingTimeCommon2 = ADC_SAMPLETIME_1CYCLE_5;
-  hadc1.Init.OversamplingMode = DISABLE;
+  hadc1.Init.OversamplingMode = ENABLE;
+  hadc1.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_32;
+  hadc1.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_5;
+  hadc1.Init.Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
   hadc1.Init.TriggerFrequencyMode = ADC_TRIGGER_FREQ_HIGH;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
   {
