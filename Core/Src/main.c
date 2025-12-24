@@ -42,12 +42,16 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
 
 TIM_HandleTypeDef htim1;
 DMA_HandleTypeDef hdma_tim1_ch2;
 
 /* USER CODE BEGIN PV */
 pled_ctx_t pled_ctx;
+
+uint8_t conv_complete = 1;
+uint16_t audio_buffer[1024] = {0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,7 +66,10 @@ static void MX_TIM1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
+	HAL_ADC_Stop_DMA(&hadc1);
+	conv_complete = 1;
+}
 /* USER CODE END 0 */
 
 /**
@@ -112,27 +119,28 @@ int main(void)
   pled_hsv_t hsv = {.hue = 0, .sat=1.0, .val=0.05};
   pled_color_t rgb = {0};
   pled_color_t black = {0};
+  //pled_color_t white = {25, 25, 25};
 
   // Clear the LEDs just in case
   pled_set_all(&pled_ctx, &black);
   pled_display(&pled_ctx);
 
   uint32_t count = 0;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	// Take an ADC reading
-	HAL_ADC_Start(&hadc1);
-	HAL_ADC_PollForConversion(&hadc1, 10000);
-	uint32_t adc_value = HAL_ADC_GetValue(&hadc1);
-	HAL_ADC_Stop(&hadc1);
-	float V_mic = 1.8*((float)adc_value/4096.0);
+    //ADC input stuff
+	// Wait for all samples to be acquired
+	if(conv_complete){
+		conv_complete = 0;
+		HAL_ADC_Start_DMA(&hadc1, (uint32_t*)audio_buffer, 1024);
+	}
 
 	uint32_t i = count%360;
-/*
 	hsv.hue = (float)i;
 	hsv2pled(&hsv, &rgb);
 	pled_set(&pled_ctx, &rgb, 1);
@@ -149,11 +157,11 @@ int main(void)
 	hsv2pled(&hsv, &rgb);
 	pled_set(&pled_ctx, &rgb, 4);
 
+    while(pled_is_busy(&pled_ctx)){;}
 	pled_display(&pled_ctx);
-	while(pled_is_busy(&pled_ctx));*/
+	//HAL_Delay(10);
 
-	count++;
-
+	count+=1;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -235,9 +243,8 @@ static void MX_ADC1_Init(void)
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.LowPowerAutoPowerOff = DISABLE;
-  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.NbrOfConversion = 1;
-  hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.DMAContinuousRequests = DISABLE;
@@ -246,7 +253,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.SamplingTimeCommon2 = ADC_SAMPLETIME_1CYCLE_5;
   hadc1.Init.OversamplingMode = ENABLE;
   hadc1.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_32;
-  hadc1.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_5;
+  hadc1.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_1;
   hadc1.Init.Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
   hadc1.Init.TriggerFrequencyMode = ADC_TRIGGER_FREQ_HIGH;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -364,6 +371,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMA1_Channel2_3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
 
 }
 
