@@ -266,9 +266,52 @@ float32_t average_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end){
   return acc;
 }
 
+void find_max_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end, uint32_t* max_bin_index, float32_t* max_bin_value){
+
+  *max_bin_index = 0;
+  *max_bin_value = 0.0;
+
+  for(int i=bin_start; i<=bin_end; i++){
+
+    if(fft[i] >= *max_bin_value){
+      *max_bin_index = i;
+      *max_bin_value = fft[i];
+    }
+  }
+}
+
+void find_max_windowed_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end, uint32_t window_size, uint32_t* max_bin_index, float32_t* max_bin_value){
+
+  *max_bin_index = 0;
+  *max_bin_value = 0.0;
+  float32_t max_acc = 0.0;
+
+  uint32_t window_half_size = window_size/2;
+  uint32_t start_window = bin_start<window_half_size?window_half_size:bin_start;
+  uint32_t stop_window = bin_end-window_half_size;
+
+  for(int window_center = start_window; window_center<=stop_window; window_center++){
+
+    uint32_t window_start = window_center-window_half_size;
+    uint32_t window_end = window_center+window_half_size;
+    float32_t acc = 0;
+
+    for(int i=window_start; i<=window_end; i++){
+
+      acc += fft[i];
+    }
+
+    if(acc>=max_acc){
+      max_acc = acc;
+      *max_bin_index = window_center;
+      *max_bin_value = fft[window_center];
+    }
+  }
+}
+
 void do_audio_response(pled_ctx_t* _pled_ctx){
 
-  static float32_t gain = 0.003;
+  static float32_t gain = 0.0001;
 
   //ADC input stuff
 	// Wait for all samples to be acquired
@@ -290,11 +333,18 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
     pled_set_all(&pled_ctx, &black);
     pled_display(&pled_ctx);
 
+    // try some stuff
     float32_t vocal_bins = average_bins(fft_buffer, 15, 73)-140.0;//(15, 73)
     vocal_bins = fmaxf(vocal_bins, 1.0);
 
+    // try some other stuff
+    float32_t max_val;
+    uint32_t max_idx;
+    find_max_bins(fft_buffer, 15, 255, &max_idx, &max_val);
+    hsv.hue = 360.0*(float)max_idx/255.0;
+
     hsv.val = 0.01;
-    hsv.val += gain*log10f(vocal_bins);
+    hsv.val += log10f(1+gain*max_val);
     hsv.val = fmaxf(0.0,fminf(hsv.val, 1.0));
 	}
 
