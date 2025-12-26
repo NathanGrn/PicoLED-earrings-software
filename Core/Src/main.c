@@ -254,9 +254,23 @@ uint32_t compute_abs_fft(float32_t* buff){
 	return j+1;
 }
 
+float32_t average_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end){
+
+  float32_t acc = 0;
+  for(int i = bin_start; i<bin_end; i++){
+    acc += fft[i];
+  }
+
+  acc = acc/(float32_t)(bin_end-bin_start);
+
+  return acc;
+}
+
 void do_audio_response(pled_ctx_t* _pled_ctx){
 
-    //ADC input stuff
+  static float32_t gain = 0.003;
+
+  //ADC input stuff
 	// Wait for all samples to be acquired
 	if(conv_complete){
 
@@ -272,9 +286,16 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
 		compute_abs_fft(fft_buffer);
 
 		//do led stuff here
-	    pled_color_t black = {0};
-	    pled_set_all(&pled_ctx, &black);
-	    pled_display(&pled_ctx);
+    pled_color_t black = {0};
+    pled_set_all(&pled_ctx, &black);
+    pled_display(&pled_ctx);
+
+    float32_t vocal_bins = average_bins(fft_buffer, 15, 73)-140.0;//(15, 73)
+    vocal_bins = fmaxf(vocal_bins, 1.0);
+
+    hsv.val = 0.01;
+    hsv.val += gain*log10f(vocal_bins);
+    hsv.val = fmaxf(0.0,fminf(hsv.val, 1.0));
 	}
 
 	return;
@@ -391,7 +412,7 @@ int main(void)
 			break;
 	}
 
-    while(pled_is_busy(&pled_ctx)){;}
+  while(pled_is_busy(&pled_ctx)){;}
 	pled_display(&pled_ctx);
 	//HAL_Delay(10);
 
