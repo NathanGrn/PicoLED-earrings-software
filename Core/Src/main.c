@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include "picoled.h"
 #include "stdlib.h"
+#include "math.h"
+#include "arm_math.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,7 +34,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define BUFF_EXPONENT 9
+#define BUFF_SIZE (1<<BUFF_EXPONENT)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -51,7 +54,8 @@ DMA_HandleTypeDef hdma_tim1_ch2;
 pled_ctx_t pled_ctx;
 
 uint8_t conv_complete = 1;
-uint16_t audio_buffer[1024] = {0};
+uint16_t audio_buffer[BUFF_SIZE] = {0};
+float32_t fft_buffer[BUFF_SIZE] = {0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,6 +74,77 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 	HAL_ADC_Stop_DMA(&hadc1);
 	conv_complete = 1;
 }
+
+int32_t isqrt(int32_t x) {
+    int32_t q = 1, r = 0;
+    while (q <= x) {
+        q <<= 2;
+    }
+    while (q > 1) {
+        int32_t t;
+        q >>= 2;
+        t = x - r - q;
+        r >>= 1;
+        if (t >= 0) {
+            x = t;
+            r += q;
+        }
+    }
+    return r;
+}
+
+int32_t compute_mean_value(uint16_t* buffer){
+
+	int32_t acc = 0;
+
+	for(int i = 0; i<BUFF_SIZE; i++){
+		acc += buffer[i];
+	}
+
+	acc = acc >> BUFF_EXPONENT;
+
+	return acc;
+}
+
+int32_t compute_RMS_value(uint16_t* buffer){
+
+	int32_t mean = compute_mean_value(buffer);
+	int32_t acc = 0;
+
+	for(int i = 0; i<BUFF_SIZE; i++){
+
+		int32_t dc_removed = (int32_t)buffer[i]-mean;
+		acc += dc_removed*dc_removed;
+	}
+	acc = acc >> BUFF_EXPONENT;
+
+	return isqrt(acc);
+}
+
+void remove_dc_and_fill_float_buff(uint16_t* u16_buff, float* f32_buff){
+
+	int32_t dc_offset = compute_mean_value(u16_buff);
+	for(int i = 0; i<BUFF_SIZE; i++){
+		f32_buff[i] = (float)(u16_buff[i]-dc_offset);
+	}
+
+	return;
+}
+
+uint32_t compute_abs_fft(float32_t* buff){
+
+	uint32_t j = 1;
+
+	for(int i=1; i<BUFF_SIZE; i+=2){
+
+		buff[j]=sqrtf(buff[i]*buff[i] + buff[i+1]*buff[i+1]);
+		j++;
+	}
+
+	buff[j] = buff[BUFF_SIZE-1];
+	return j+1;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -126,6 +201,10 @@ int main(void)
   pled_display(&pled_ctx);
 
   uint32_t count = 0;
+  //float gain = 0.01;
+
+  arm_rfft_fast_instance_f32 fft_s;
+  arm_rfft_fast_init_f32(&fft_s, BUFF_SIZE);
 
   /* USER CODE END 2 */
 
@@ -136,8 +215,19 @@ int main(void)
     //ADC input stuff
 	// Wait for all samples to be acquired
 	if(conv_complete){
+		/*
+		int32_t rms_value = compute_RMS_value(audio_buffer);
+		rms_value = 0>(rms_value-7)?0:(rms_value-7); // remove noise offset
+		hsv.val = 0.01;
+		hsv.val += log10f(1.0+gain*(float)(rms_value));
+		hsv.val = fmaxf(0.0,fminf(hsv.val, 1.0));
+		*/
+		remove_dc_and_fill_float_buff(audio_buffer, fft_buffer);
+		arm_rfft_fast_f32(&fft_s, fft_buffer, fft_buffer, 0);
+		compute_abs_fft(fft_buffer);
 		conv_complete = 0;
-		HAL_ADC_Start_DMA(&hadc1, (uint32_t*)audio_buffer, 1024);
+		HAL_ADC_Start_DMA(&hadc1, (uint32_t*)audio_buffer, BUFF_SIZE);
+		count+=10;
 	}
 
 	uint32_t i = count%360;
@@ -161,7 +251,7 @@ int main(void)
 	pled_display(&pled_ctx);
 	//HAL_Delay(10);
 
-	count+=1;
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
