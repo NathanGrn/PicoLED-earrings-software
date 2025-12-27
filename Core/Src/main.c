@@ -349,19 +349,24 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
     float32_t windowed_bins_sums = sum_bins(fft_buffer, max_idx-11, max_idx+11);
     float32_t energy_ratio = windowed_bins_sums/all_bins_sums; //between 0 and 1 by definition
 
-    float32_t log_input = ((energy_ratio-0.2)/0.7); //must be between 1 and 9
-    log_input = fmaxf(0.0,fminf(1.0, log_input));
+//    float32_t log_input = ((energy_ratio-0.2)/0.8); //must be between 1 and 9
+//    log_input = fmaxf(0.005,fminf(1.0, log_input));
 
     //hsv.hue = 360.0*(float)max_idx/255.0;
     hsv.hue = fmodf((127.1*logf((float)max_idx/15.0)+30.0),360);
 
     //hsv.val = gain*log10f(1.0+9.0*log_input);
-    hsv.val = gain*log_input;
-    hsv.val = fmaxf(0.005,fminf(hsv.val, 1.0));
+    //hsv.val = gain*log_input;
+    hsv.val = 2714.0*powf(energy_ratio, 9.186);
+    hsv.val = fmaxf(0.0,fminf(hsv.val, 1.0));
 
-    if(all_bins_sums < 30000){
-      hsv.val = 0;
-    }
+//    if(all_bins_sums < 40000){
+//      hsv.val = fminf(hsv.val, (float)all_bins_sums/40000.0);
+//    }
+
+//    if(all_bins_sums < 30000){
+//      hsv.val = 0;
+//    }
 	}
 
 	return;
