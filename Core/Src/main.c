@@ -254,16 +254,19 @@ uint32_t compute_abs_fft(float32_t* buff){
 	return j+1;
 }
 
-float32_t average_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end){
+float32_t sum_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end){
 
   float32_t acc = 0;
   for(int i = bin_start; i<bin_end; i++){
     acc += fft[i];
   }
 
-  acc = acc/(float32_t)(bin_end-bin_start);
+	return acc;
+}
 
-  return acc;
+float32_t average_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end){
+
+	return sum_bins(fft, bin_start, bin_end)/(float32_t)(bin_end-bin_start);
 }
 
 void find_max_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end, uint32_t* max_bin_index, float32_t* max_bin_value){
@@ -340,12 +343,25 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
     // try some other stuff
     float32_t max_val;
     uint32_t max_idx;
-    find_max_bins(fft_buffer, 15, 255, &max_idx, &max_val);
-    hsv.hue = 360.0*(float)max_idx/255.0;
+    //find_max_bins(fft_buffer, 15, 255, &max_idx, &max_val);
+    find_max_windowed_bins(fft_buffer, 15, 255, 23, &max_idx, &max_val);
+    float32_t all_bins_sums = sum_bins(fft_buffer, 15, 255);
+    float32_t windowed_bins_sums = sum_bins(fft_buffer, max_idx-11, max_idx+11);
+    float32_t energy_ratio = windowed_bins_sums/all_bins_sums; //between 0 and 1 by definition
 
-    hsv.val = 0.01;
-    hsv.val += log10f(1+gain*max_val);
-    hsv.val = fmaxf(0.0,fminf(hsv.val, 1.0));
+    float32_t log_input = ((energy_ratio-0.2)/0.7); //must be between 1 and 9
+    log_input = fmaxf(0.0,fminf(1.0, log_input));
+
+    //hsv.hue = 360.0*(float)max_idx/255.0;
+    hsv.hue = fmodf((127.1*logf((float)max_idx/15.0)+30.0),360);
+
+    //hsv.val = gain*log10f(1.0+9.0*log_input);
+    hsv.val = gain*log_input;
+    hsv.val = fmaxf(0.005,fminf(hsv.val, 1.0));
+
+    if(all_bins_sums < 30000){
+      hsv.val = 0;
+    }
 	}
 
 	return;
