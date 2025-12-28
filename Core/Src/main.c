@@ -240,6 +240,14 @@ void remove_dc_and_fill_float_buff(uint16_t* u16_buff, float* f32_buff){
 	return;
 }
 
+void apply_hanning_window(float32_t* buff, uint32_t len){
+
+	for(int i = 0; i<len; i++){
+		float32_t w = sinf((PI*(float)i)/((float)(len-1)));
+		buff[i] = w*w*buff[i];
+	}
+}
+
 uint32_t compute_abs_fft(float32_t* buff){
 
 	uint32_t j = 1;
@@ -327,6 +335,8 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
 		conv_complete = 0;
 		HAL_ADC_Start_DMA(&hadc1, (uint32_t*)audio_buffer, BUFF_SIZE); //This take ~50ms
 
+    apply_hanning_window(fft_buffer, BUFF_SIZE);
+    
 		//compute fft
 		arm_rfft_fast_f32(&fft_s, fft_buffer, fft_buffer, 0);
 		compute_abs_fft(fft_buffer);
