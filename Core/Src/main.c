@@ -356,7 +356,8 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
 
 		target_hsv.hue = fmodf((127.1*logf((float)max_idx/15.0)+30.0),360);
 
-		target_hsv.val = 0.1864*logf((float32_t)raw_audio_rms/8);
+		//target_hsv.val = 0.1034*logf((float32_t)raw_audio_rms/11.0);
+		target_hsv.val = 4*0.001579*((float32_t)raw_audio_rms-9.7);
 
 		target_hsv.val = fmaxf(0.0,fminf(target_hsv.val, 1.0));
 	}
@@ -369,7 +370,7 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
 		actual_hsv.hue = target_hsv.hue;
 		actual_hsv.sat = target_hsv.sat;
 
-		if(target_hsv.val > actual_hsv.val){
+		if(target_hsv.val >= actual_hsv.val){
 			actual_hsv.val = target_hsv.val;
 		}
 		else{
@@ -591,8 +592,8 @@ static void MX_ADC1_Init(void)
   hadc1.Init.SamplingTimeCommon1 = ADC_SAMPLETIME_79CYCLES_5;
   hadc1.Init.SamplingTimeCommon2 = ADC_SAMPLETIME_1CYCLE_5;
   hadc1.Init.OversamplingMode = ENABLE;
-  hadc1.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_32;
-  hadc1.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_1;
+  hadc1.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_64;
+  hadc1.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_2;
   hadc1.Init.Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
   hadc1.Init.TriggerFrequencyMode = ADC_TRIGGER_FREQ_HIGH;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
