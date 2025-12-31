@@ -322,61 +322,64 @@ void find_max_windowed_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end
 
 void do_audio_response(pled_ctx_t* _pled_ctx){
 
-  static float32_t gain = 0.0001;
+	static pled_hsv_t target_hsv = {.hue = 0.0, .sat=1.0, .val=0.01};
+	static pled_hsv_t actual_hsv = {0};
+	pled_color_t pled_color = {0};
 
-  //ADC input stuff
+	//ADC input stuff
 	// Wait for all samples to be acquired
 	if(conv_complete){
 
 		//copy raw audio buffer to float array
 		remove_dc_and_fill_float_buff(audio_buffer, fft_buffer);
 
+		uint32_t raw_audio_rms = compute_RMS_value(audio_buffer);
+
 		//re-launch acquisition
 		conv_complete = 0;
 		HAL_ADC_Start_DMA(&hadc1, (uint32_t*)audio_buffer, BUFF_SIZE); //This take ~50ms
 
-    apply_hanning_window(fft_buffer, BUFF_SIZE);
+		apply_hanning_window(fft_buffer, BUFF_SIZE);
     
 		//compute fft
 		arm_rfft_fast_f32(&fft_s, fft_buffer, fft_buffer, 0);
 		compute_abs_fft(fft_buffer);
 
-		//do led stuff here
-    pled_color_t black = {0};
-    pled_set_all(&pled_ctx, &black);
-    pled_display(&pled_ctx);
+		float32_t max_val;
+		uint32_t max_idx;
 
-    // try some stuff
-    float32_t vocal_bins = average_bins(fft_buffer, 15, 73)-140.0;//(15, 73)
-    vocal_bins = fmaxf(vocal_bins, 1.0);
+		find_max_windowed_bins(fft_buffer, 15, 255, 23, &max_idx, &max_val);
+		float32_t all_bins_sums = sum_bins(fft_buffer, 15, 255);
+		float32_t windowed_bins_sums = sum_bins(fft_buffer, max_idx-11, max_idx+11);
+		float32_t energy_ratio = windowed_bins_sums/all_bins_sums; //between 0 and 1 by definition
+		//target_hsv.val = 2714.0*powf(energy_ratio, 9.186);
 
-    // try some other stuff
-    float32_t max_val;
-    uint32_t max_idx;
-    //find_max_bins(fft_buffer, 15, 255, &max_idx, &max_val);
-    find_max_windowed_bins(fft_buffer, 15, 255, 23, &max_idx, &max_val);
-    float32_t all_bins_sums = sum_bins(fft_buffer, 15, 255);
-    float32_t windowed_bins_sums = sum_bins(fft_buffer, max_idx-11, max_idx+11);
-    float32_t energy_ratio = windowed_bins_sums/all_bins_sums; //between 0 and 1 by definition
+		target_hsv.hue = fmodf((127.1*logf((float)max_idx/15.0)+30.0),360);
 
-//    float32_t log_input = ((energy_ratio-0.2)/0.8); //must be between 1 and 9
-//    log_input = fmaxf(0.005,fminf(1.0, log_input));
+		target_hsv.val = 0.1864*logf((float32_t)raw_audio_rms/8);
 
-    //hsv.hue = 360.0*(float)max_idx/255.0;
-    hsv.hue = fmodf((127.1*logf((float)max_idx/15.0)+30.0),360);
+		target_hsv.val = fmaxf(0.0,fminf(target_hsv.val, 1.0));
+	}
 
-    //hsv.val = gain*log10f(1.0+9.0*log_input);
-    //hsv.val = gain*log_input;
-    hsv.val = 2714.0*powf(energy_ratio, 9.186);
-    hsv.val = fmaxf(0.0,fminf(hsv.val, 1.0));
+	static uint32_t last_millis = 0;
+	uint32_t current_ms = HAL_GetTick();
 
-//    if(all_bins_sums < 40000){
-//      hsv.val = fminf(hsv.val, (float)all_bins_sums/40000.0);
-//    }
+	if(current_ms-last_millis >= 1){
 
-//    if(all_bins_sums < 30000){
-//      hsv.val = 0;
-//    }
+		actual_hsv.hue = target_hsv.hue;
+		actual_hsv.sat = target_hsv.sat;
+
+		if(target_hsv.val > actual_hsv.val){
+			actual_hsv.val = target_hsv.val;
+		}
+		else{
+			actual_hsv.val -= 0.75*actual_hsv.val;
+			actual_hsv.val = fmaxf(actual_hsv.val, 0.0);
+		}
+
+		hsv2pled(&actual_hsv, &pled_color);
+		pled_set_array(_pled_ctx, &pled_color, 1, 4);
+		last_millis = current_ms;
 	}
 
 	return;
@@ -472,7 +475,7 @@ int main(void)
   while (1)
   {
 
-	static led_mode_t current_mode = RANDOM_BLINK;
+	static led_mode_t current_mode = AUDIO_RESPONSE;
 	bool button_value = debounce_button(HAL_GPIO_ReadPin(BTN_GPIO_Port, BTN_Pin));
 	current_mode = run_fsm(current_mode, falling_edge_detect(button_value));
 
