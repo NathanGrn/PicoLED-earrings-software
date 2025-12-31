@@ -29,13 +29,30 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef enum led_mode{
 
+	RANDOM_BLINK = 0,
+	SLOW_COLOR_CHANGE,
+	AUDIO_RESPONSE,
+	END_MODE_LIST //add new mode before this enum value
+} led_mode_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BUFF_EXPONENT 9
+#define BUFF_EXPONENT 9 //must be 9
 #define BUFF_SIZE (1<<BUFF_EXPONENT)
+
+#define EARRING_STATIC_BRIGHTNESS 0.05f // Value between 0 and 1 included
+
+#define RANDOM_BLINK_BRIGHTNESS 0.4f
+#define RANDOM_BLINK_TEST_PERIOD 100 // integer in millisecond
+#define RANDOM_BLINK_TEST_CHANCE 54 // integer between 0 and 99 included
+#define RANDOM_BLINK_FLASH_DURATION 35 // integer in millisecond
+
+#define SLOW_COLOR_CHANGE_PERIOD 120.0f // Period in second for a full color rotation (0 to 360° on hsv wheel)
+#define COLOR_CHANGE_ROLLER_STATIC_BRIGHTNESS 0.05f
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -52,6 +69,7 @@ DMA_HandleTypeDef hdma_tim1_ch2;
 
 /* USER CODE BEGIN PV */
 pled_ctx_t pled_ctx;
+arm_rfft_fast_instance_f32 fft_s;
 
 uint8_t conv_complete = 1;
 uint16_t audio_buffer[BUFF_SIZE] = {0};
@@ -70,6 +88,97 @@ static void MX_TIM1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+led_mode_t run_fsm(led_mode_t current_mode, bool do_transition){
+
+	if(do_transition){
+		current_mode++;
+		if(current_mode >= END_MODE_LIST){
+			current_mode = 0;
+		}
+	}
+
+	return current_mode;
+}
+
+void do_random_blink(pled_ctx_t* _pled_ctx){
+
+	static uint32_t last_millis = 0;
+
+	static pled_hsv_t hsv = {.hue = 0, .sat=1.0, .val=0.01};
+	static pled_color_t black = {0};
+	pled_color_t pled_color = {0};
+
+	static uint32_t led_time_table[4] = {0};
+
+	if(HAL_GetTick()-last_millis >= RANDOM_BLINK_TEST_PERIOD){
+
+		//1st led is white
+		hsv.sat = 0;
+		hsv.val = EARRING_STATIC_BRIGHTNESS;
+		hsv2pled(&hsv, &pled_color);
+		pled_set(_pled_ctx, &pled_color, 0);
+
+		hsv.sat = 1.0;
+		//2 to 5 are random blink each
+		for(int i = 0; i < 4; i++){
+
+			int32_t blink = rand()%100;
+			int32_t color = rand()%3;
+
+			if(blink<=RANDOM_BLINK_TEST_CHANCE && led_time_table[i]==0){
+				led_time_table[i] = HAL_GetTick();
+				hsv.val = RANDOM_BLINK_BRIGHTNESS;
+				hsv.hue = color*120;
+				hsv2pled(&hsv, &pled_color);
+				pled_set(_pled_ctx, &pled_color, i+1);
+			}
+		}
+
+		last_millis = HAL_GetTick();
+	}
+
+	for(int i = 0; i<4; i++){
+
+		if((led_time_table[i] != 0) && (HAL_GetTick()-led_time_table[i]>=RANDOM_BLINK_FLASH_DURATION)){
+			pled_set(_pled_ctx, &black, i+1);
+			led_time_table[i] = 0;
+		}
+	}
+
+	return;
+}
+
+void do_slow_color_change(pled_ctx_t* _pled_ctx){
+
+	static uint32_t last_millis = 0;
+	static pled_hsv_t hsv = {.hue = 0.0, .sat=1.0, .val=0.01};
+	pled_color_t pled_color = {0};
+
+	float color_increment = 360.0/(SLOW_COLOR_CHANGE_PERIOD*1000.0);
+
+	uint32_t actual_ms = HAL_GetTick();
+	if(actual_ms-last_millis >= 1){
+
+		hsv.hue += color_increment;//*(float)(actual_ms-last_millis);
+		if(hsv.hue >= 360.0){
+			hsv.hue = 0.0;
+		}
+
+		hsv.val = EARRING_STATIC_BRIGHTNESS;
+		hsv2pled(&hsv, &pled_color);
+		pled_set(_pled_ctx, &pled_color, 0);
+
+		hsv.val = COLOR_CHANGE_ROLLER_STATIC_BRIGHTNESS;
+		hsv2pled(&hsv, &pled_color);
+		pled_set_array(_pled_ctx, &pled_color, 1, 4);
+
+		last_millis = actual_ms;
+	}
+
+	return;
+}
+
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 	HAL_ADC_Stop_DMA(&hadc1);
 	conv_complete = 1;
@@ -145,6 +254,62 @@ uint32_t compute_abs_fft(float32_t* buff){
 	return j+1;
 }
 
+void do_audio_response(pled_ctx_t* _pled_ctx){
+
+    //ADC input stuff
+	// Wait for all samples to be acquired
+	if(conv_complete){
+
+		//copy raw audio buffer to float array
+		remove_dc_and_fill_float_buff(audio_buffer, fft_buffer);
+
+		//re-launch acquisition
+		conv_complete = 0;
+		HAL_ADC_Start_DMA(&hadc1, (uint32_t*)audio_buffer, BUFF_SIZE); //This take ~50ms
+
+		//compute fft
+		arm_rfft_fast_f32(&fft_s, fft_buffer, fft_buffer, 0);
+		compute_abs_fft(fft_buffer);
+
+		//do led stuff here
+	    pled_color_t black = {0};
+	    pled_set_all(&pled_ctx, &black);
+	    pled_display(&pled_ctx);
+	}
+
+	return;
+}
+
+bool debounce_button(bool button_value){
+
+	static uint32_t last_millis = 0;
+	static bool last_state = false;
+
+	if(button_value != last_state){
+		if(HAL_GetTick()-last_millis > 40){
+			last_state = button_value;
+		}
+	}
+	else{
+		last_millis = HAL_GetTick();
+	}
+
+	return last_state;
+}
+
+bool falling_edge_detect(bool button_value){
+
+	static bool last_state = false;
+	bool falling_edge_detected = false;
+
+	if(!button_value && last_state){
+		falling_edge_detected = true;
+	}
+	last_state = button_value;
+
+	return falling_edge_detected;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -190,20 +355,12 @@ int main(void)
   HAL_Delay(10);
   HAL_GPIO_WritePin(EN_5V_GPIO_Port, EN_5V_Pin, GPIO_PIN_SET);
 
-  // Prepare some buffers
-  pled_hsv_t hsv = {.hue = 0, .sat=1.0, .val=0.05};
-  pled_color_t rgb = {0};
-  pled_color_t black = {0};
-  //pled_color_t white = {25, 25, 25};
-
   // Clear the LEDs just in case
+  pled_color_t black = {0};
   pled_set_all(&pled_ctx, &black);
   pled_display(&pled_ctx);
 
-  uint32_t count = 0;
-  //float gain = 0.01;
-
-  arm_rfft_fast_instance_f32 fft_s;
+  // Init the fft config
   arm_rfft_fast_init_f32(&fft_s, BUFF_SIZE);
 
   /* USER CODE END 2 */
@@ -212,40 +369,27 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    //ADC input stuff
-	// Wait for all samples to be acquired
-	if(conv_complete){
-		/*
-		int32_t rms_value = compute_RMS_value(audio_buffer);
-		rms_value = 0>(rms_value-7)?0:(rms_value-7); // remove noise offset
-		hsv.val = 0.01;
-		hsv.val += log10f(1.0+gain*(float)(rms_value));
-		hsv.val = fmaxf(0.0,fminf(hsv.val, 1.0));
-		*/
-		remove_dc_and_fill_float_buff(audio_buffer, fft_buffer);
-		arm_rfft_fast_f32(&fft_s, fft_buffer, fft_buffer, 0);
-		compute_abs_fft(fft_buffer);
-		conv_complete = 0;
-		HAL_ADC_Start_DMA(&hadc1, (uint32_t*)audio_buffer, BUFF_SIZE);
-		count+=10;
+
+	static led_mode_t current_mode = RANDOM_BLINK;
+	bool button_value = debounce_button(HAL_GPIO_ReadPin(BTN_GPIO_Port, BTN_Pin));
+	current_mode = run_fsm(current_mode, falling_edge_detect(button_value));
+
+	switch (current_mode) {
+		case RANDOM_BLINK:
+			do_random_blink(&pled_ctx);
+			break;
+
+		case SLOW_COLOR_CHANGE:
+			do_slow_color_change(&pled_ctx);
+			break;
+
+		case AUDIO_RESPONSE:
+			do_audio_response(&pled_ctx);
+			break;
+
+		default:
+			break;
 	}
-
-	uint32_t i = count%360;
-	hsv.hue = (float)i;
-	hsv2pled(&hsv, &rgb);
-	pled_set(&pled_ctx, &rgb, 1);
-
-	hsv.hue = (float)((i+90)%360);
-	hsv2pled(&hsv, &rgb);
-	pled_set(&pled_ctx, &rgb, 2);
-
-	hsv.hue = (float)((i+180)%360);
-	hsv2pled(&hsv, &rgb);
-	pled_set(&pled_ctx, &rgb, 3);
-
-	hsv.hue = (float)((i+270)%360);
-	hsv2pled(&hsv, &rgb);
-	pled_set(&pled_ctx, &rgb, 4);
 
     while(pled_is_busy(&pled_ctx)){;}
 	pled_display(&pled_ctx);

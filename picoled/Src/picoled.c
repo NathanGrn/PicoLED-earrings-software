@@ -38,6 +38,20 @@ pled_status_t pled_set(pled_ctx_t* ctx, pled_color_t* color, uint16_t index){
 
 	return PLED_OK;
 }
+
+pled_status_t pled_set_array(pled_ctx_t* ctx, pled_color_t* color, uint16_t start, uint16_t end){
+
+	if(start >= ctx->n_leds || end >= ctx->n_leds){
+		return PLED_ERROR;
+	}
+
+	for(int i = start; i <= end; i++){
+		memcpy(ctx->led_array+i, color, sizeof(pled_color_t));
+	}
+
+	return PLED_OK;
+}
+
 pled_status_t pled_set_all(pled_ctx_t* ctx, pled_color_t* color){
 
 	for(int i = 0; i < ctx->n_leds; i++){

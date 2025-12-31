@@ -40,6 +40,7 @@ pled_status_t pled_init(pled_ctx_t* ctx, pled_color_t* led_array, uint16_t n_led
 
 // Set color function
 pled_status_t pled_set(pled_ctx_t* ctx, pled_color_t* color, uint16_t index);
+pled_status_t pled_set_array(pled_ctx_t* ctx, pled_color_t* color, uint16_t start, uint16_t end);
 pled_status_t pled_set_all(pled_ctx_t* ctx, pled_color_t* color);
 
 // Display function
