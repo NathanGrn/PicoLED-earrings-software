@@ -349,11 +349,11 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
 		uint32_t max_idx;
 
 		find_max_windowed_bins(fft_buffer, 15, 255, 23, &max_idx, &max_val);
-		float32_t all_bins_sums = sum_bins(fft_buffer, 15, 255);
+/*		float32_t all_bins_sums = sum_bins(fft_buffer, 15, 255);
 		float32_t windowed_bins_sums = sum_bins(fft_buffer, max_idx-11, max_idx+11);
 		float32_t energy_ratio = windowed_bins_sums/all_bins_sums; //between 0 and 1 by definition
 		//target_hsv.val = 2714.0*powf(energy_ratio, 9.186);
-
+*/
 		target_hsv.hue = fmodf((127.1*logf((float)max_idx/15.0)+30.0),360);
 
 		//target_hsv.val = 0.1034*logf((float32_t)raw_audio_rms/11.0);
@@ -380,6 +380,13 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
 
 		hsv2pled(&actual_hsv, &pled_color);
 		pled_set_array(_pled_ctx, &pled_color, 1, 4);
+
+		pled_hsv_t led0;
+		memcpy(&led0, &actual_hsv, sizeof(pled_hsv_t));
+		led0.val = led0.val/10.0;
+		hsv2pled(&led0, &pled_color);
+		pled_set(_pled_ctx, &pled_color, 0);
+
 		last_millis = current_ms;
 	}
 
