@@ -76,8 +76,8 @@ const uint8_t reserved_flash_sector[PAGE_SIZE] __attribute__((__used__))  __attr
 pled_ctx_t pled_ctx;
 arm_rfft_fast_instance_f32 fft_s;
 
-uint8_t conv_complete = 1;
-uint16_t audio_buffer[BUFF_SIZE] = {0};
+volatile uint8_t conv_complete = 1;
+volatile uint16_t audio_buffer[BUFF_SIZE] = {0};
 float32_t fft_buffer[BUFF_SIZE] = {0};
 /* USER CODE END PV */
 
@@ -243,6 +243,12 @@ void do_slow_color_change(pled_ctx_t* _pled_ctx){
 	static uint32_t last_millis = 0;
 	static pled_hsv_t hsv = {.hue = 0.0, .sat=1.0, .val=0.01};
 	pled_color_t pled_color = {0};
+
+	static bool first_start = true;
+	if(first_start){
+		hsv.hue = (float)(rand()%3599)/10;
+		first_start = false;
+	}
 
 	float color_increment = 360.0/(SLOW_COLOR_CHANGE_PERIOD*1000.0);
 
@@ -420,9 +426,9 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
 	if(conv_complete){
 
 		//copy raw audio buffer to float array
-		remove_dc_and_fill_float_buff(audio_buffer, fft_buffer);
+		remove_dc_and_fill_float_buff((uint16_t*)audio_buffer, fft_buffer);
 
-		uint32_t raw_audio_rms = compute_RMS_value(audio_buffer);
+		uint32_t raw_audio_rms = compute_RMS_value((uint16_t*)audio_buffer);
 
 		//re-launch acquisition
 		conv_complete = 0;
@@ -438,14 +444,8 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
 		uint32_t max_idx;
 
 		find_max_windowed_bins(fft_buffer, 15, 255, 23, &max_idx, &max_val);
-/*		float32_t all_bins_sums = sum_bins(fft_buffer, 15, 255);
-		float32_t windowed_bins_sums = sum_bins(fft_buffer, max_idx-11, max_idx+11);
-		float32_t energy_ratio = windowed_bins_sums/all_bins_sums; //between 0 and 1 by definition
-		//target_hsv.val = 2714.0*powf(energy_ratio, 9.186);
-*/
 		target_hsv.hue = fmodf((127.1*logf((float)max_idx/15.0)+30.0),360);
 
-		//target_hsv.val = 0.1034*logf((float32_t)raw_audio_rms/11.0);
 		target_hsv.val = 4*0.001579*((float32_t)raw_audio_rms-9.7);
 
 		target_hsv.val = fmaxf(0.0,fminf(target_hsv.val, 1.0));
@@ -561,6 +561,14 @@ int main(void)
   pled_color_t black = {0};
   pled_set_all(&pled_ctx, &black);
   pled_display(&pled_ctx);
+
+  // Init the ADC stuff
+  conv_complete = 0;
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)audio_buffer, BUFF_SIZE); //This take ~50ms
+  while(!conv_complete){;}
+
+  // Init random
+  srand(audio_buffer[0]);
 
   // Init the fft config
   arm_rfft_fast_init_f32(&fft_s, BUFF_SIZE);
