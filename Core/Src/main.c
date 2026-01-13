@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "picoconf.h"
 #include "picoled.h"
+#include "picodsp.h"
 #include "stdlib.h"
 #include "math.h"
 #include "arm_math.h"
@@ -53,7 +55,7 @@ typedef enum led_mode{
 #define SLOW_COLOR_CHANGE_PERIOD 120.0f // Period in second for a full color rotation (0 to 360° on hsv wheel)
 #define COLOR_CHANGE_ROLLER_STATIC_BRIGHTNESS 0.05f
 
-#define CONFIG_SAVE_DELAY 5000
+#define CONFIG_SAVE_DELAY 2000
 
 /* USER CODE END PD */
 
@@ -70,9 +72,6 @@ TIM_HandleTypeDef htim1;
 DMA_HandleTypeDef hdma_tim1_ch2;
 
 /* USER CODE BEGIN PV */
-#define PAGE_SIZE (2*1024) //Each page is 2KB
-const uint8_t reserved_flash_sector[PAGE_SIZE] __attribute__((__used__))  __attribute__ ((section (".reserved_flash")));
-
 pled_ctx_t pled_ctx;
 arm_rfft_fast_instance_f32 fft_s;
 
@@ -93,90 +92,6 @@ static void MX_TIM1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-uint32_t search_next_u64_unprog(void){
-
-	__IO uint64_t* read_address = (__IO uint64_t*) reserved_flash_sector;
-
-	for(int i = 0; i < PAGE_SIZE/8; i++){
-
-		if(read_address[i] == 0xFFFFFFFFFFFFFFFF){
-			return i;
-		}
-	}
-
-	return PAGE_SIZE/8;
-}
-
-// unprog the flash and set the first double-word to default-value
-void config_flash_reset(uint64_t default_value){
-
-	HAL_FLASH_Unlock();
-
-	FLASH_EraseInitTypeDef page1_erase;
-	page1_erase.TypeErase = FLASH_TYPEERASE_PAGES;
-	page1_erase.Banks = FLASH_BANK_1;
-	page1_erase.Page = 1;
-	page1_erase.NbPages = 1;
-
-	uint32_t page_error;
-	HAL_FLASHEx_Erase(&page1_erase, &page_error);
-
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, (uint32_t)reserved_flash_sector, default_value);
-
-	HAL_FLASH_Lock();
-}
-
-void config_flash_init(void){
-
-	__IO uint64_t* read_address = (__IO uint64_t*) reserved_flash_sector;
-
-	for(int i = 0; i < PAGE_SIZE/8; i++){
-
-		uint64_t val = read_address[i];
-
-		if(val != 0xFFFFFFFFFFFFFFFF && val >= END_MODE_LIST){
-
-			config_flash_reset(0);
-		}
-	}
-}
-
-led_mode_t get_mode_from_flash(void){
-
-	__IO uint64_t* read_address = (__IO uint64_t*) reserved_flash_sector;
-
-	uint32_t index = search_next_u64_unprog();
-	if(index == 0) {
-		return RANDOM_BLINK;
-	}
-
-	return (led_mode_t)read_address[index-1];
-}
-
-void save_mode_to_flash(led_mode_t mode){
-
-	if(mode == get_mode_from_flash()){
-		return;
-	}
-
-	uint32_t index = search_next_u64_unprog();
-
-	if(index >= PAGE_SIZE/8){
-		config_flash_reset(mode);
-	}
-	else{
-
-		__IO uint64_t* read_address = (__IO uint64_t*) reserved_flash_sector;
-		read_address += index;
-
-		HAL_FLASH_Unlock();
-
-		HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, (uint32_t)read_address, mode);
-
-		HAL_FLASH_Lock();
-	}
-}
 
 led_mode_t run_fsm(led_mode_t current_mode, bool do_transition){
 
@@ -279,142 +194,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 	conv_complete = 1;
 }
 
-int32_t isqrt(int32_t x) {
-    int32_t q = 1, r = 0;
-    while (q <= x) {
-        q <<= 2;
-    }
-    while (q > 1) {
-        int32_t t;
-        q >>= 2;
-        t = x - r - q;
-        r >>= 1;
-        if (t >= 0) {
-            x = t;
-            r += q;
-        }
-    }
-    return r;
-}
-
-int32_t compute_mean_value(uint16_t* buffer){
-
-	int32_t acc = 0;
-
-	for(int i = 0; i<BUFF_SIZE; i++){
-		acc += buffer[i];
-	}
-
-	acc = acc >> BUFF_EXPONENT;
-
-	return acc;
-}
-
-int32_t compute_RMS_value(uint16_t* buffer){
-
-	int32_t mean = compute_mean_value(buffer);
-	int32_t acc = 0;
-
-	for(int i = 0; i<BUFF_SIZE; i++){
-
-		int32_t dc_removed = (int32_t)buffer[i]-mean;
-		acc += dc_removed*dc_removed;
-	}
-	acc = acc >> BUFF_EXPONENT;
-
-	return isqrt(acc);
-}
-
-void remove_dc_and_fill_float_buff(uint16_t* u16_buff, float* f32_buff){
-
-	int32_t dc_offset = compute_mean_value(u16_buff);
-	for(int i = 0; i<BUFF_SIZE; i++){
-		f32_buff[i] = (float)(u16_buff[i]-dc_offset);
-	}
-
-	return;
-}
-
-void apply_hanning_window(float32_t* buff, uint32_t len){
-
-	for(int i = 0; i<len; i++){
-		float32_t w = sinf((PI*(float)i)/((float)(len-1)));
-		buff[i] = w*w*buff[i];
-	}
-}
-
-uint32_t compute_abs_fft(float32_t* buff){
-
-	uint32_t j = 1;
-
-	for(int i=1; i<BUFF_SIZE; i+=2){
-
-		buff[j]=sqrtf(buff[i]*buff[i] + buff[i+1]*buff[i+1]);
-		j++;
-	}
-
-	buff[j] = buff[BUFF_SIZE-1];
-	return j+1;
-}
-
-float32_t sum_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end){
-
-  float32_t acc = 0;
-  for(int i = bin_start; i<bin_end; i++){
-    acc += fft[i];
-  }
-
-	return acc;
-}
-
-float32_t average_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end){
-
-	return sum_bins(fft, bin_start, bin_end)/(float32_t)(bin_end-bin_start);
-}
-
-void find_max_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end, uint32_t* max_bin_index, float32_t* max_bin_value){
-
-  *max_bin_index = 0;
-  *max_bin_value = 0.0;
-
-  for(int i=bin_start; i<=bin_end; i++){
-
-    if(fft[i] >= *max_bin_value){
-      *max_bin_index = i;
-      *max_bin_value = fft[i];
-    }
-  }
-}
-
-void find_max_windowed_bins(float32_t* fft, uint32_t bin_start, uint32_t bin_end, uint32_t window_size, uint32_t* max_bin_index, float32_t* max_bin_value){
-
-  *max_bin_index = 0;
-  *max_bin_value = 0.0;
-  float32_t max_acc = 0.0;
-
-  uint32_t window_half_size = window_size/2;
-  uint32_t start_window = bin_start<window_half_size?window_half_size:bin_start;
-  uint32_t stop_window = bin_end-window_half_size;
-
-  for(int window_center = start_window; window_center<=stop_window; window_center++){
-
-    uint32_t window_start = window_center-window_half_size;
-    uint32_t window_end = window_center+window_half_size;
-    float32_t acc = 0;
-
-    for(int i=window_start; i<=window_end; i++){
-
-      acc += fft[i];
-    }
-
-    if(acc>=max_acc){
-      max_acc = acc;
-      *max_bin_index = window_center;
-      *max_bin_value = fft[window_center];
-    }
-  }
-}
-
 void do_audio_response(pled_ctx_t* _pled_ctx){
 
 	static pled_hsv_t target_hsv = {.hue = 0.0, .sat=1.0, .val=0.01};
@@ -426,9 +205,9 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
 	if(conv_complete){
 
 		//copy raw audio buffer to float array
-		remove_dc_and_fill_float_buff((uint16_t*)audio_buffer, fft_buffer);
+		remove_dc_and_fill_float_buff((uint16_t*)audio_buffer, fft_buffer, BUFF_EXPONENT);
 
-		uint32_t raw_audio_rms = compute_RMS_value((uint16_t*)audio_buffer);
+		uint32_t raw_audio_rms = compute_RMS_value((uint16_t*)audio_buffer, BUFF_EXPONENT);
 
 		//re-launch acquisition
 		conv_complete = 0;
@@ -438,7 +217,7 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
     
 		//compute fft
 		arm_rfft_fast_f32(&fft_s, fft_buffer, fft_buffer, 0);
-		compute_abs_fft(fft_buffer);
+		compute_abs_fft(fft_buffer, BUFF_SIZE);
 
 		float32_t max_val;
 		uint32_t max_idx;
@@ -574,8 +353,8 @@ int main(void)
   arm_rfft_fast_init_f32(&fft_s, BUFF_SIZE);
 
   // Init config flash
-  config_flash_init();
-  led_mode_t current_mode = get_mode_from_flash();
+  picoconf_flash_init((uint64_t)END_MODE_LIST, (uint64_t)RANDOM_BLINK);
+  led_mode_t current_mode = (led_mode_t)picoconf_get_conf_from_flash((uint64_t)RANDOM_BLINK);
   led_mode_t last_saved_mode = current_mode;
   uint32_t save_start_ms = 0;
 
@@ -612,16 +391,15 @@ int main(void)
 	// Save mode when needed
 	if(current_mode != last_saved_mode){
 
-		if(HAL_GetTick()-save_start_ms > CONFIG_SAVE_DELAY){
+		if(HAL_GetTick()-save_start_ms >= CONFIG_SAVE_DELAY){
 
-			save_mode_to_flash(current_mode);
+			picoconf_save_conf_to_flash((uint64_t)current_mode);
 			last_saved_mode = current_mode;
 		}
 	}
 	else{
 		save_start_ms = HAL_GetTick();
 	}
-
 
     /* USER CODE END WHILE */
 

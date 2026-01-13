@@ -2,7 +2,7 @@
  * picoled.c
  *
  *  Created on: Dec 23, 2025
- *      Author: nathan
+ *      Author: Nathan
  */
 
 #include "picoled.h"
