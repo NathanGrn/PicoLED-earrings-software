@@ -48,7 +48,7 @@ _RESERVED_SECTOR_SIZE = 2048; /* 2kB page size */
 MEMORY
 {
   RAM    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 8K
-  ISR_VECTOR_SPACE (rx): ORIGIN = 0x8000000, LENGTH = _RESERVED_SECTOR_SIZE /* technically occupies the entire first flash sector (16kByte) */
+  ISR_VECTOR_SPACE (rx): ORIGIN = 0x8000000, LENGTH = _RESERVED_SECTOR_SIZE /* technically occupies the entire first flash sector (2kB) */
   RESERVED_FLASH_SECTOR (rx): ORIGIN = 0x8000000 + _RESERVED_SECTOR_SIZE, LENGTH = _RESERVED_SECTOR_SIZE
   FLASH    (rx)    : ORIGIN = 0x8000000 + 2*_RESERVED_SECTOR_SIZE, LENGTH = 64K - 2*_RESERVED_SECTOR_SIZE
 }
