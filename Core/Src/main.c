@@ -72,11 +72,15 @@ TIM_HandleTypeDef htim1;
 DMA_HandleTypeDef hdma_tim1_ch2;
 
 /* USER CODE BEGIN PV */
-pled_ctx_t pled_ctx;
-arm_rfft_fast_instance_f32 fft_s;
 
+//pled stuff
+pled_color_t led_array[5] = {0};
+pled_ctx_t pled_ctx;
+
+// ADC and fft stuff
 volatile uint8_t conv_complete = 1;
 volatile uint16_t audio_buffer[BUFF_SIZE] = {0};
+arm_rfft_fast_instance_f32 fft_s;
 float32_t fft_buffer[BUFF_SIZE] = {0};
 /* USER CODE END PV */
 
@@ -93,6 +97,38 @@ static void MX_TIM1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+// FSM stuff
+
+bool debounce_button(bool button_value){
+
+	static uint32_t last_millis = 0;
+	static bool last_state = false;
+
+	if(button_value != last_state){
+		if(HAL_GetTick()-last_millis > 40){
+			last_state = button_value;
+		}
+	}
+	else{
+		last_millis = HAL_GetTick();
+	}
+
+	return last_state;
+}
+
+bool falling_edge_detect(bool button_value){
+
+	static bool last_state = false;
+	bool falling_edge_detected = false;
+
+	if(!button_value && last_state){
+		falling_edge_detected = true;
+	}
+	last_state = button_value;
+
+	return falling_edge_detected;
+}
+
 led_mode_t run_fsm(led_mode_t current_mode, bool do_transition){
 
 	if(do_transition){
@@ -104,6 +140,8 @@ led_mode_t run_fsm(led_mode_t current_mode, bool do_transition){
 
 	return current_mode;
 }
+
+// Task per mode
 
 void do_random_blink(pled_ctx_t* _pled_ctx){
 
@@ -189,6 +227,8 @@ void do_slow_color_change(pled_ctx_t* _pled_ctx){
 	return;
 }
 
+// do_audio_response() triggered callback
+
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 	HAL_ADC_Stop_DMA(&hadc1);
 	conv_complete = 1;
@@ -261,36 +301,6 @@ void do_audio_response(pled_ctx_t* _pled_ctx){
 	return;
 }
 
-bool debounce_button(bool button_value){
-
-	static uint32_t last_millis = 0;
-	static bool last_state = false;
-
-	if(button_value != last_state){
-		if(HAL_GetTick()-last_millis > 40){
-			last_state = button_value;
-		}
-	}
-	else{
-		last_millis = HAL_GetTick();
-	}
-
-	return last_state;
-}
-
-bool falling_edge_detect(bool button_value){
-
-	static bool last_state = false;
-	bool falling_edge_detected = false;
-
-	if(!button_value && last_state){
-		falling_edge_detected = true;
-	}
-	last_state = button_value;
-
-	return falling_edge_detected;
-}
-
 /* USER CODE END 0 */
 
 /**
@@ -330,26 +340,23 @@ int main(void)
   //Calibrate the ADC
   HAL_ADCEx_Calibration_Start(&hadc1);
 
-  // Init LED output then enable 5V supply
-  pled_color_t led_array[5];
+  // Init LED output, clear the LEDs just in case and start 5V supply
   pled_init(&pled_ctx, led_array, 5);
-  HAL_Delay(10);
-  HAL_GPIO_WritePin(EN_5V_GPIO_Port, EN_5V_Pin, GPIO_PIN_SET);
-
-  // Clear the LEDs just in case
   pled_color_t black = {0};
   pled_set_all(&pled_ctx, &black);
   pled_display(&pled_ctx);
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(EN_5V_GPIO_Port, EN_5V_Pin, GPIO_PIN_SET);
 
-  // Init the ADC stuff
+  // Init audio buffer with real measurements
   conv_complete = 0;
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)audio_buffer, BUFF_SIZE); //This take ~50ms
   while(!conv_complete){;}
 
   // Init random
-  srand(audio_buffer[0]);
+  srand(audio_buffer[510]);
 
-  // Init the fft config
+  // Init fft config
   arm_rfft_fast_init_f32(&fft_s, BUFF_SIZE);
 
   // Init config flash
