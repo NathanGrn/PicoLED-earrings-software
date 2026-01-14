@@ -7,7 +7,6 @@ mLRS/.metadata/*
 mLRS/**/.settings/*
 mLRS/**/Release/*
 mLRS/**/Debug/*
-*.launch
 tools/build3/*
 tools/build/*
 tools/esp-build/*
